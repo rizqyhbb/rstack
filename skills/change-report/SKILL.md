@@ -24,6 +24,10 @@ it exists; its Goal decides which screens matter most and go first.
 
 Use the test database, never staging or production. techchutes:
 `E2E_TEST=1 npm run dev` on the test DB (`CLAUDE.md` → running locally).
+Any step that seeds, resets or truncates that database runs under
+`~/.claude/skills/full-send/scripts/with-testdb-lock <db-name> <command>`
+(see full-send → Shared test database), because other threads use the same
+database at the same time. Plain screenshots of existing data need no lock.
 Squirrel: the shared dev database through `wt up`. Pick real records that
 show the change (the same record for before and after). Note their ids in
 the report.

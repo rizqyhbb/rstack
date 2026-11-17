@@ -1,0 +1,30 @@
+#!/bin/bash
+# Run a command while holding the lock for a shared test database, so parallel
+# threads (full-send, change-report, babysit-pr) never truncate each other's
+# data mid-run.
+#
+#   with-testdb-lock <lock-name> <command...>
+#
+# <lock-name> is the database's name, for example "techchutes-test". The lock is
+# /tmp/testdb-<lock-name>.lock, taken with mkdir (atomic). A lock whose owner
+# process is gone, or older than 45 minutes, is treated as stale and removed.
+# Waits up to 40 minutes, printing one line a minute while waiting.
+set -u
+name=${1:?lock name}; shift
+[ $# -gt 0 ] || { echo "with-testdb-lock: no command" >&2; exit 2; }
+lock="/tmp/testdb-${name}.lock"
+waited=0
+while ! mkdir "$lock" 2>/dev/null; do
+  owner=$(cat "$lock/pid" 2>/dev/null || echo "")
+  age=$(( $(date +%s) - $(stat -f %m "$lock" 2>/dev/null || echo 0) ))
+  if { [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; } || [ "$age" -gt 2700 ]; then
+    echo "with-testdb-lock: removing stale lock ($lock, pid ${owner:-?}, ${age}s old)" >&2
+    rm -rf "$lock"; continue
+  fi
+  if [ "$waited" -ge 2400 ]; then echo "with-testdb-lock: gave up after ${waited}s (held by pid ${owner:-?}: $(cat "$lock/what" 2>/dev/null))" >&2; exit 3; fi
+  [ $((waited % 60)) -eq 0 ] && echo "with-testdb-lock: waiting for $name (held by pid ${owner:-?}: $(cat "$lock/what" 2>/dev/null))" >&2
+  sleep 10; waited=$((waited + 10))
+done
+echo $$ > "$lock/pid"; printf '%s\n' "$*" > "$lock/what"; echo "$PWD" > "$lock/cwd"
+trap 'rm -rf "$lock"' EXIT INT TERM
+"$@"

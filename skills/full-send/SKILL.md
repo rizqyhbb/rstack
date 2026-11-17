@@ -106,6 +106,28 @@ reproduction, a screenshot. Use the most direct proof the change allows:
 When you cannot find a way to prove a change, you do not have full
 confidence. Ask the user.
 
+### Shared test database
+
+Several threads usually run at once on the same repo, and they all point at
+the same test database (techchutes: `TEST_DATABASE_URL`, whose e2e suite
+truncates every table). Two runs at once corrupt each other and look like
+regressions. So every command that writes to a shared test database (e2e,
+an import with `--reset`, a seed, a screenshot run that seeds) goes through
+the lock script in this skill's folder:
+
+```bash
+~/.claude/skills/full-send/scripts/with-testdb-lock techchutes-test npm run test:e2e -- tests/e2e/foo.spec.ts
+~/.claude/skills/full-send/scripts/with-testdb-lock techchutes-test npx tsx scripts/with-test-env.ts npm run -s import:workbook -- ~/Downloads/workbook-tc --reset --apply
+```
+
+The lock name is the database's name (one per database, shared by every
+thread). It waits for the holder, prints who holds it, clears a lock whose
+process is gone, and releases on exit. Never wait on another thread's
+Playwright process by `ps` instead; that misses CLI imports and seeds. If
+the wait exceeds 40 minutes the script gives up and says who holds it: run
+the proof later, do not kill the holder. Reads and the dev server need no
+lock. `change-report` and `babysit-pr` use the same script.
+
 ## Merge gate
 
 Full confidence means all of these are true on the latest commit:

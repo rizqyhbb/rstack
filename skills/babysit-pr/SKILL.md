@@ -33,7 +33,11 @@ one.
 
 There is no CI on techchutes. Run every check its `CLAUDE.md` names
 (`typecheck`, `build`, `check:css`, the docs generators when their folders
-changed) before every push, and say in the PR when e2e could not run.
+changed) before every push, and say in the PR when e2e could not run. Any
+e2e run on the shared test database goes through
+`~/.claude/skills/full-send/scripts/with-testdb-lock <db-name> …` (full-send
+→ Shared test database); a failure seen without the lock is not a finding
+until it is reproduced with it.
 
 ## 2. Waiting
 
