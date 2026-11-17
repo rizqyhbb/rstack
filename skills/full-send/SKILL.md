@@ -114,7 +114,9 @@ Full confidence means all of these are true on the latest commit:
 - Required checks are green (or, with no CI, every local check passed on the
   final head and the PR says so).
 - The review bot's latest verdict is good to merge **and** covers the current
-  head. Every finding is fixed or declined with a written reason.
+  head. Every finding is fixed or declined with a written reason. A verdict
+  whose only remaining disagreements are recorded Decisions you declined in
+  writing counts as good to merge for those items.
 - No human review still requests changes.
 - The branch is up to date with the base and GitHub reports it mergeable
   (`mergeStateStatus` CLEAN, not BEHIND or DIRTY).
@@ -144,7 +146,9 @@ Ask only when you cannot continue alone:
   force-pushing another branch.
 - The goal is ambiguous in a way that changes the result.
 - Another PR makes this one obsolete.
-- The review bot repeats a declined point twice, or the round budget ends.
+- The review bot repeats, twice, a point that no Decision covers, or the
+  round budget ends with such a point still open. A point a Decision
+  covers is never a reason to ask: decline it again and move on.
 
 Decide everything else yourself with sensible defaults, record each decision
 in `.fullsend/TODO.md` with the reason, and list them in the report.

@@ -88,9 +88,16 @@ cheap-looking fix at a time. After each round run
 `git diff --shortstat origin/<base>` and compare with the round before; if
 the diff grew for reasons other than a real bug, cut first.
 
-**The bot keeps repeating a declined point:** after the second time, stop
-and ask the user (`AskUserQuestion`) with the point, your reason, and a
-recommendation. Do not fix it to end the loop.
+**The bot keeps repeating a point:**
+
+- If the point is covered by a **Decision** in TODO.md: never ask. Decline it
+  again with the decision and date, resolve the thread, and count it as
+  settled for the merge gate. The user already decided; asking again is
+  what "full send" exists to avoid. Ask only if you now believe the
+  decision is wrong, with evidence.
+- If the point is **not** covered by a Decision and you have declined it
+  twice: stop and ask the user (`AskUserQuestion`) with the point, your
+  reason, and a recommendation. Do not fix it to end the loop.
 
 ## 4. Base branch
 
@@ -112,7 +119,9 @@ before closing anything.
 - Stop early when a round returns only nits.
 - **Ready:** the latest review says good to merge **and** covers the current
   head, every check is green, mergeStateStatus is CLEAN, no human review
-  requests changes. Right before declaring ready, `git fetch` and check the
+  requests changes. A review whose only remaining DISAGREE items are
+  recorded Decisions you have declined in writing counts as good to merge
+  for those items. Right before declaring ready, `git fetch` and check the
   PR once more.
 - **Needs the user:** a decision conflict, a repeated point, the budget
   reached, or a fix that needs a schema or design choice.
