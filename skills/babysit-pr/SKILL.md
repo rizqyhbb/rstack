@@ -1,117 +1,129 @@
 ---
 name: babysit-pr
-description: Monitor a pull request through review and CI. Use when the user asks to monitor, watch, or babysit a PR.
+description: Monitor a pull request through review bots and checks until its merge gate passes, fixing real findings without widening the PR. Use when the user asks to monitor, watch, or babysit a PR, and from full-send and full-stop.
 ---
 
 # Babysit PR
 
-Many repos have AI review bots. They're helpful, even if they are not always
-right.
+Take a PR from "filed" to "merge gate passes" without growing it, without
+reversing decisions, and without a human watching. This skill never merges
+on its own; `full-send` does that after the gate.
 
-## Waiting
+## 0. Read the contract
 
-Never write your own watcher, polling loop, or `sleep` loop. Use one watcher
-per PR: `watch_pull_request` in T3 Code, `pr-wait` everywhere else. Never run
-both on the same PR. Every watcher on a GitHub account shares one rate limit.
+If `.fullsend/TODO.md` exists in the worktree, read it before the first
+review: **Goal**, **Out of scope**, **Decisions** (with dates), **Review**
+(mode and reviewer), **Follow-ups**. If it does not exist and you are running
+under `full-send` or `full-stop`, create it from the thread first (their
+step 1). Without either, the PR description and the thread are the contract.
 
-### In T3 Code: `watch_pull_request`
+## 1. The review engine
 
-Handle the existing checks and comments first. Then call
-`watch_pull_request` and end your turn. T3 Code wakes you with a message when
-a check fails, the required checks pass, someone comments or reviews, or the
-branch conflicts.
+**`npertuset/*` repos:** the reviewer is the `@squirrel-agent` bot, driven
+by the `squirrel-review-loop` skill. Call it with the mode and reviewer from
+TODO.md (default: Agent reviews + local fixes, Debate). It skips its own
+approval prompt when called from here. It posts the command, reads the
+bot's findings, and hands them to you for triage. Each round you fix locally,
+commit, push, and re-trigger. That skill never merges and neither does this
+one.
 
-- **Only the thread that owns the PR watches it.** If you are a delegated
-  child task (a reviewer, a Sol round, any `delegate_task` child), never call
-  `watch_pull_request`. The parent owns the PR. Do not watch PRs you are not
-  working on.
-- **A wake is news, not a merge decision.** Check the merge gate yourself.
-- **Unwatch when you hand off.** A watched thread stays in Working and out of
-  the user's inbox. When you stop (ready, blocked, or asking the user a question),
-  call `unwatch_pull_request` first. A merge or close ends the watch on its
-  own.
-- **"Stopped watching, could not read it"** usually means GitHub's rate limit
-  is used up. Run `gh api rate_limit --jq .resources.graphql` before you
-  watch again. If `remaining` is near 0, wait for `reset` with one background
-  command, then watch again. Never watch again in a tight loop.
+**Anywhere else:** the repo's own review bots and CI. Use tstack's
+`scripts/pr-wait` from this skill's directory as the watcher when
+`watch_pull_request` is not available.
 
-### Everywhere else: `pr-wait`
+There is no CI on techchutes. Run every check its `CLAUDE.md` names
+(`typecheck`, `build`, `check:css`, the docs generators when their folders
+changed) before every push, and say in the PR when e2e could not run.
 
-Wait with `scripts/pr-wait` from this skill's directory (use its absolute
-path).
+## 2. Waiting
 
-```bash
-pr-wait <pr> [--repo owner/name] [--until ready|green|any-change]
-```
+Never write your own watcher, polling loop, or `sleep` loop. One watcher per
+PR.
 
-It prints one line per real event. It exits 0 when the `--until` condition is
-met or the PR merges, 1 when it needs you (a required check failed, conflicts,
-unresolved threads, PR closed), and 2 on bad input.
+**In T3 Code:** handle the existing checks and comments first, then call
+`watch_pull_request` and end your turn. T3 wakes you when a check fails,
+required checks pass, someone comments or reviews, or the branch conflicts.
 
-- `ready` (default): required checks green, Greptile or Macroscope reviewed the
-  head, and no unresolved threads. Use this to babysit.
-- `green`: required checks only. Use it when the repo has no Greptile or
-  Macroscope.
-- `any-change`: exit on the first event.
+- Only the thread that owns the PR watches it. A delegated child (a council
+  reviewer, any `delegate_task` child) never calls `watch_pull_request`.
+- A wake is news, not a merge decision. Check the merge gate yourself.
+- Unwatch when you hand off. When you stop (ready, blocked, or asking a
+  question), call `unwatch_pull_request` first. A merge or close ends the
+  watch on its own.
+- "Stopped watching, could not read it" usually means GitHub's rate limit.
+  `gh api rate_limit --jq .resources.graphql`; if `remaining` is near 0, wait
+  for `reset` with one background command, then watch again.
 
-In Claude Code, run it with the Monitor tool (`timeout_ms: 3600000`), so each
-line wakes you. Without a monitor, run it as one long command. It ends on its
-own.
+The bot's review arrives as a PR comment, so the watch wakes you for it. The
+`poll-review.sh` script in `squirrel-review-loop` is the fallback when no
+watcher exists.
 
-Start it again after you push, after you handle an exit 1, and after a resume.
-It remembers what it already reported, so nothing that arrived in between is
-lost. If it says another pid already watches the PR, do not start a second one.
-Kill the old one only if its events do not reach you.
+**Everywhere else:** `pr-wait <pr> [--repo owner/name] [--until ready|green|any-change]`
+from this skill's `scripts/` folder, run through the Monitor tool
+(`timeout_ms: 3600000`) so each line wakes you. Restart it after every push.
 
 With either watcher: when an event needs no action, end your turn without a
 message. Never post or say "still waiting".
 
-## GitHub rate limits
+## 3. Triage every finding against the contract
 
-`gh pr create`, `gh pr view`, and `gh pr checks` use GraphQL. When GraphQL is
-used up, the REST limit is separate and usually still has room. Use
-`gh api repos/<owner>/<repo>/pulls/<n>` to read a PR, and
-`gh api repos/<owner>/<repo>/commits/<sha>/check-runs` for checks.
+Only act on checks and comments newer than the latest push. Verify every
+finding against the source before changing code. Then sort it:
 
-## Reviews
+| Finding | Do |
+|---|---|
+| Real bug in the intended case | Fix with the smallest change. Prefer deleting or narrowing code. Get proof before pushing. |
+| Real bug outside the intended case, or in code this PR did not touch | Decline in writing, list under Follow-ups in TODO.md and the PR. |
+| Contradicts a **Decision** in TODO.md | **Never apply it.** Reply with the decision and its date (`leaving-pr-comments` decline template), resolve the thread, tell the bot not to raise it again. If you think the decision was wrong, stop and ask the user with both sides in three lines each. |
+| Widens the goal: new option, new guard, new abstraction, "while we're here" | Decline in writing. Follow-up. |
+| Tests, compat, edge-case guards the intent does not need; small perf | Decline in writing. Follow-up. |
+| Style that hides no bug | Ignore unless the repo's rules require it. |
+| CI or check failure | Fix if the repo caused it; say so if infrastructure flaked and re-run. |
 
-Only act on checks and comments newer than the latest push. Verify every bot
-finding against the source before changing code. Fix real findings and CI
-failures, distinguish repository failures from infrastructure flakes, and reply
-with a written reason when dismissing false positives.
+Reply with a written reason when dismissing anything, using
+`leaving-pr-comments`. Resolve the comment after.
 
-If the repo has `.macroscope/check-run-agents/*.md`, read those rules before you
-reply to a Macroscope finding. Its findings cite them.
+Keep the PR at the size the goal needs. Review loops grow a PR one
+cheap-looking fix at a time. After each round run
+`git diff --shortstat origin/<base>` and compare with the round before; if
+the diff grew for reasons other than a real bug, cut first.
 
-CodeRabbit is advisory. Treat its findings like any other finding, but never
-wait for it and never hold a merge for it.
+**The bot keeps repeating a declined point:** after the second time, stop
+and ask the user (`AskUserQuestion`) with the point, your reason, and a
+recommendation. Do not fix it to end the loop.
 
-If a review bot leaves feedback you believe is not worth addressing, reply with
-a written reason and resolve the comment. Use the `leaving-pr-comments` skill
-for every comment posted on the user's behalf.
+## 4. Base branch
 
-Screenshots and videos help as well, when you have a way to upload them.
-
-Keep the PR at the size the user's goal needs. Review loops tend to grow a
-PR one cheap-looking fix at a time. Fix real bugs in the intended case.
-Decline the rest with a written reason, and list them as follow-ups:
-unneeded tests, guards for edge cases that do not matter, extra integration
-or compatibility, and small performance costs. Prefer the fix that deletes or
-narrows code.
-
-## Base branch and merging
-
-Keep an eye on changes to `main` and rebase when needed. `pr-wait` reports when
-new base commits touch this PR's files, and when the PR becomes BEHIND or DIRTY.
+Keep an eye on changes to the base branch. `pr-wait` reports when new base
+commits touch this PR's files and when the PR becomes BEHIND or DIRTY.
 `watch_pull_request` reports conflicts only, so check for BEHIND yourself
-before you call the PR ready.
-If an overlapping PR makes this one obsolete, stop monitoring, report it to the
-user, and ask before closing the PR unless closure was explicitly authorized.
+(`gh pr view --json mergeStateStatus`) before calling the PR ready. Rebase
+with `git fetch && git rebase origin/<base>`, push with
+`--force-with-lease`, run the checks again, re-request the review.
 
-If nothing has changed, stay quiet rather than posting filler comments. Stop
-when `pr-wait` exits 0, or in T3 Code when the merge gate passes on the latest
-head. Merge only when the user explicitly requested it;
-otherwise report that the PR is ready. Right before a merge, run `git fetch` and
-check the PR again. Never merge when it is BEHIND or DIRTY, or when base commits
-that landed after the last green run touch this PR's files. Rebase, push, and
-wait for green again.
+If an overlapping PR makes this one obsolete, stop, report it, and ask
+before closing anything.
+
+## 5. Rounds and the stopping rule
+
+- Count each bot review as one round. Budget: 5 rounds, like
+  `squirrel-review-loop`. Extend only for security, permissions, data loss
+  or concurrency findings that are real and still open.
+- Stop early when a round returns only nits.
+- **Ready:** the latest review says good to merge **and** covers the current
+  head, every check is green, mergeStateStatus is CLEAN, no human review
+  requests changes. Right before declaring ready, `git fetch` and check the
+  PR once more.
+- **Needs the user:** a decision conflict, a repeated point, the budget
+  reached, or a fix that needs a schema or design choice.
+- **Blocked:** a check that fails for reasons outside the repo, a rejected
+  push, the bot timing out twice.
+
+## 6. Report
+
+Start with the status heading from `~/.claude/CLAUDE.md` (✅ GOOD TO MERGE,
+🔁 FIXES PUSHED, ⚠️ NEEDS YOUR DECISION, ⏳ WAITING FOR REVIEW, ❌ BLOCKED)
+and the PR on the next line. Then: rounds, commits pushed per round, findings
+fixed, findings declined with the one-line reason, follow-ups, and that
+merging is manual unless `full-send` is running. On ready, hand back to the
+caller (`full-send` merges; `full-stop` and a direct call stop here).

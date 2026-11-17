@@ -40,3 +40,19 @@ for replies. Merge or close the original PR only when authorized.
 
 Report what you inherited, what you changed, how you verified it, how credit
 was preserved, and any remaining decision.
+
+## rstack notes
+
+- **A T3 Code thread as the source:** read it with `t3_thread_read` (its
+  link or id), including the questions the user answered and later
+  corrections. Its worktree is `~/.t3/worktrees/<repo>/<branch>`; the
+  Squirrel ones are under `~/Documents/project/squirrel/wt/<feature>/`.
+  Uncommitted work there is user-owned: commit it on the branch as a WIP
+  commit before anything else, never stash.
+- **Rebuild the tracker.** Write `.fullsend/TODO.md` from the thread: Goal,
+  Out of scope, and every Decision with the date it was made, before
+  changing code. A decision made in the old thread stands.
+- **Continuing in place** (the user said "take over" without "new PR"):
+  work on the same branch and PR, and then run `full-stop` from its step 2,
+  or `full-send` if the user asked to merge.
+- Squirrel repos: the review bot is `@squirrel-agent`, never `@agent`.

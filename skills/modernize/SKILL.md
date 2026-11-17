@@ -100,3 +100,14 @@ Lead with `MODERNIZE`, `REWORK`, or `CLOSE` and the reason. Then summarize:
 
 Separate observed facts from judgment. Say what could not be verified instead
 of manufacturing confidence.
+
+## rstack notes
+
+- Squirrel monorepo: a branch from before 2026-10-07 (no `api/` folder) has
+  to be rebased across the monorepo move first; `docs/monorepo.md` in the
+  repo says how. Tell the user before doing it.
+- Use a disposable worktree (`wt new <branch>` for Squirrel, `git worktree
+  add` elsewhere), never the main checkout. Remove it with `wrap-up` when
+  done.
+- A `CLOSE` recommendation never closes the PR itself; ask with
+  `AskUserQuestion`.
